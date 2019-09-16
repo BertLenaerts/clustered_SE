@@ -4,6 +4,78 @@
 # within transformation ONLY
 # Stata df correction possible
 
+######################################################
+
+vcovDF = function(x, stata = F) {
+  
+  demy = pmodel.response(x, model = "within")
+  demX = model.matrix(x, model = "within", rhs = 1, cstcovar.rm = "all")
+  
+  if (length(formula(x))[2] > 1) { # check for IV option
+    demZ = model.matrix(x, model = "within", rhs = 2, cstcovar.rm = "all")
+    demX = fitted(lm.fit(demZ, demX))%>%as.matrix()
+  }
+  
+  pdim = pdim(x)
+  nT = pdim$nT$N # nmb of obs
+  k = dim(demX)[[2]] # nmb of x-vars
+  n = pdim$nT$n # nmb of groups
+  t = pdim$nT$T # nmb of time units
+  
+  k_ef = case_when(
+    x$args$effect  == "individual" ~ as.integer(n),
+    x$args$effect  == "time" ~ as.integer(t),
+    x$args$effect  == "twoways" ~ as.integer((n+t-1)) ) # cannot substract intercept twice
+  
+  mycov = x$vcov
+  
+  if (stata) {
+    mycov = nT/(nT-k-k_ef) * mycov
+  }
+  
+  return(mycov)
+  
+}
+
+######################################################
+
+vcovHR = function(x, stata = F) {
+  
+  demy = pmodel.response(x, model = "within")
+  demX = model.matrix(x, model = "within", rhs = 1, cstcovar.rm = "all")
+  
+  if (length(formula(x))[2] > 1) { # check for IV option
+    demZ = model.matrix(x, model = "within", rhs = 2, cstcovar.rm = "all")
+    demX = fitted(lm.fit(demZ, demX))%>%as.matrix()
+  }
+  
+  pdim = pdim(x)
+  nT = pdim$nT$N # nmb of obs
+  k = dim(demX)[[2]] # nmb of x-vars
+  n = pdim$nT$n # nmb of groups
+  t = pdim$nT$T # nmb of time units
+  
+  k_ef = case_when(
+    x$args$effect  == "individual" ~ as.integer(n),
+    x$args$effect  == "time" ~ as.integer(t),
+    x$args$effect  == "twoways" ~ as.integer((n+t-1)) ) # cannot substract intercept twice
+  
+  uhat = x$residuals
+  
+  salame = crossprod(demX, diag(uhat^2)) %*% demX 
+  pane = solve(crossprod(demX))
+  mycov = pane %*% salame %*% pane
+  
+  if (stata) {
+    mycov = nT/(nT-k-k_ef) * mycov
+  }
+  
+  return(mycov)
+  
+}
+
+######################################################
+
 vcovCL = function(x, cluster, stata = F) {
   
   demy = pmodel.response(x, model = "within")
@@ -25,7 +97,7 @@ vcovCL = function(x, cluster, stata = F) {
   k_ef = case_when(
     x$args$effect  == "individual" ~ as.integer(n),
     x$args$effect  == "time" ~ as.integer(t),
-    x$args$effect  == "twoways" ~ as.integer((n+t-1)) )
+    x$args$effect  == "twoways" ~ as.integer((n+t-1)) ) # cannot substract intercept twice
   
   uhat = x$residuals
   
@@ -56,33 +128,9 @@ vcovCL = function(x, cluster, stata = F) {
 
 vcovTC = function(x, cluster1, cluster2, stata = F) {
   
-  demX = model.matrix(x, model = "within", rhs = 1, cstcovar.rm = "all")
-  
-  if (length(formula(x))[2] > 1) { # check for IV option
-    demZ = model.matrix(x, model = "within", rhs = 2, cstcovar.rm = "all")
-    demX = fitted(lm.fit(demZ, demX))%>%as.matrix()
-  }
-  
-  pdim = pdim(x)
-  nT = pdim$nT$N # nmb of obs
-  k = dim(demX)[[2]] # nmb of x-vars
-  n = pdim$nT$n # nmb of groups
-  t = pdim$nT$T # nmb of time units
-
-  k_ef = case_when(
-    x$args$effect  == "individual" ~ as.integer(n),
-    x$args$effect  == "time" ~ as.integer(t),
-    x$args$effect  == "twoways" ~ as.integer((n+t-1)) )
-  
-  som = vcovCL(x, cluster = cluster1, stata = stata) + 
-    vcovCL(x, cluster = cluster2, stata = stata)
-  
-  if(stata) {
-    mycov = som - nT/(nT-k-k_ef) * vcovHC(x, type="HC0", method = "white1")
-  } else {
-    mycov = som - vcovHC(x, type="HC0", method = "white1")
-    
-  }
+  mycov = vcovCL(x, cluster = cluster1, stata = stata) + 
+    vcovCL(x, cluster = cluster2, stata = stata) -
+    vcovHR(x, stata = stata)
   
   return(mycov)
     
