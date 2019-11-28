@@ -4,7 +4,7 @@ library(lfe)
 library(lmtest)
 library(dplyr)
 library(readr)
-source("vcovCL.R")
+source("vcov_plm.R")
 
 ######################################################
 
@@ -18,52 +18,45 @@ d = read_csv("d.csv") %>%
 # 5 year groups
 # 3 cluster groups (gid)
 # 2 x-vars (x & u)
-# 1 end. var (x)
-# 1 IV-vars (e)
 
 ## GROUP-FIXED EFFECTS
 
-plm2a=plm(y~x +u | u+e,
+plm2a=plm(y~x +u,
           data=d,
           model="within", 
           effect="individual", 
           index=c("id", "year"))
 
-# GROUP CLUSTER
-coeftest(plm2a, vcov=(40/(41-9-2))*(9/8)*vcovHC(plm2a, type="HC0", cluster="group"))
-coeftest(plm2a, vcov=vcovCL(x=plm2a, cluster=d$id, stata = T))
-summary(felm(y ~ u | id | (x ~ e) | id, d))
+# NO CORRECTION (no HC & no df correction)
+summary(plm2a) 
+summary(felm(y ~ u + x| id | 0 | 0, d))
 
-vcovHC(plm2a, type="HC0") # default cluster = group (method = arellano)
-vcovHC(plm2a, type="HC0", cluster="group")
-vcovHC(plm2a, type="HC0", cluster="group", method="arellano")
+# HC CORRECTION
+coeftest(plm2a, vcov=(41/(41-9-2))*vcovHC(plm2a, type="HC0", method = "white1"))
+coeftest(plm2a, vcovHR(plm2a))
+
+# GROUP CLUSTER
+coeftest(plm2a, vcov=vcovCL(x=plm2a, cluster=d$id))
+summary(felm(y ~ u + x | id | 0 | id, d))
+
+vcovHC(plm2a, type="HC0", cluster="group", method="arellano") 
+# clustering can also be done using vcovHC but without Stata-like df adjustment
+# default: cluster = group & method = arellano
 vcovG(plm2a, type = "HC0", l = 0, inner = "cluster", cluster="group")
+# this is the workhorse behind vcovHC
 
 # TIME CLUSTER
-coeftest(plm2a, vcov=(40/(41-9-2))*(5/4)*vcovHC(plm2a, type="HC0", cluster="time"))
-coeftest(plm2a, vcov=vcovCL(x=plm2a, cluster=d$year, stata = T))
-summary(felm(y ~ u | id | (x ~ e) | year, d))
-
-# NO CLUSTERING (no HC & no df correction)
-summary(plm2a) # plm2a$vcov
-summary(felm(y ~ u | id | (x ~ e) | 0, d))
-
-# HC COREECTION
-coeftest(plm2a, vcov=(40/(41-9-2))*vcovG(plm2a, type = "HC0", l = 0, inner = "white"))
-coeftest(plm2a, vcov=(40/(41-9-2))*vcovHC(plm2a, type="HC0", method = "white1"))
+coeftest(plm2a, vcov=vcovCL(x=plm2a, cluster=d$year))
+summary(felm(y ~ u + x| id | 0 | year, d))
 
 # HIGHER-LEVEL CLUSTERING
-coeftest(plm2a, vcov=(40/(41-9-2))*(3/2)*vcovCL(x=plm2a, cluster=d$gid))
-summary(felm(y ~ u | id | (x ~ e) | gid, d))
+coeftest(plm2a, vcov=vcovCL(x=plm2a, cluster=d$gid))
+summary(felm(y ~ u + x| id | 0 | gid, d))
 
 # TWOWAY CLUSTERING
 coeftest(plm2a, vcov=vcovDC(plm2a, type="HC0"))
 coeftest(plm2a, vcov=vcovTC(x=plm2a, d$year, d$id))
-coeftest(plm2a, vcov=vcovTC(x=plm2a, d$year, d$id, stata=T))
-coeftest(plm2a, vcov=( (40/(41-9-2))*(9/8)*vcovCL(x=plm2a, cluster=d$id)+
-                         (40/(41-9-2))*(5/4)* vcovCL(x=plm2a, cluster=d$year)-
-                         (40/(41-9-2))*(41/40)*vcovHC(plm2a, type="HC0", method = "white1") ) )
-summary(felm(y ~ u | id | (x ~ e) | (id+year), d))
+summary(felm(y ~ u + x| id | 0 | (id+year), d))
 # felm uses the intersection of both the group and time cluster to generate
 # a third cluster variable; if the id-year combos are unique then this is equivalent
 # to White's heteroskedasticity-robust correction
@@ -74,81 +67,70 @@ summary(felm(y ~ u | id | (x ~ e) | (id+year), d))
 vcovCL(x=plm2a, cluster=d$idyear)
 vcovHC(plm2a, type="HC0", method = "white1")
 
+
 ## TIME-FIXED EFFECTS
 
-plm2b=plm(y~x +u | u+e,
+plm2b=plm(y~x +u,
           data=d,
           model="within", 
           effect="time", 
           index=c("id", "year"))
 
+# NO CORRECTION (no HC & no df correction)
+summary(plm2b)
+summary(felm(y ~ u + x| year | 0 | 0, d))
+
+# HC CORRECTION
+coeftest(plm2b, vcov=(41/(41-5-2))*vcovHC(plm2b, type="HC0", method = "white1"))
+coeftest(plm2b, vcovHR(plm2b))
+
 # GROUP CLUSTER
-coeftest(plm2b, vcov=(40/(41-5-2))*(9/8)*vcovHC(plm2b, type="HC0", cluster="group"))
-coeftest(plm2b, vcov=vcovCL(x=plm2b, cluster=d$id, stata=T))
-summary(felm(y ~ u | year | (x ~ e) | id, d))
+coeftest(plm2b, vcov=vcovCL(x=plm2b, cluster=d$id))
+summary(felm(y ~ u + x| year | 0 | id, d))
 
 # TIME CLUSTER
-coeftest(plm2b, vcov=(40/(41-5-2))*(5/4)*vcovHC(plm2b, type="HC0", cluster="time"))
-coeftest(plm2b, vcov=vcovCL(x=plm2b, cluster=d$year, stata=T))
-summary(felm(y ~ u | year | (x ~ e) | year, d))
+coeftest(plm2b, vcov=vcovCL(x=plm2b, cluster=d$year))
+summary(felm(y ~ u + x| year | 0 | year, d))
 
-# NO CLUSTER (no HC too)
-summary(plm2b)
-summary(felm(y ~ u | year | (x ~ e) | 0, d))
-
-# HC COREECTION
-coeftest(plm2b, vcov=(40/(41-5-2))*vcovG(plm2b, type = "HC0", l = 0, inner = "white"))
-coeftest(plm2b, vcov=(40/(41-5-2))*vcovHC(plm2b, type="HC0", method = "white1"))
-
-# HIGHER-LEVEL CLUSTER
-coeftest(plm2b, vcov=vcovCL(x=plm2b, cluster=d$gid, stata=T))
-summary(felm(y ~ u | year | (x ~ e) | gid, d))
+# HIGHER-LEVEL CLUSTERING
+coeftest(plm2b, vcov=vcovCL(x=plm2b, cluster=d$gid))
+summary(felm(y ~ u + x| year | 0 | gid, d))
 
 # TWOWAY CLUSTERING
-coeftest(plm2b, vcov=vcovTC(x=plm2b, d$year, d$id, stata=T))
-summary(felm(y ~ u | year | (x ~ e) | (id+year), d))
+coeftest(plm2b, vcov=vcovDC(plm2b, type="HC0"))
+coeftest(plm2b, vcov=vcovTC(x=plm2b, d$year, d$id))
+summary(felm(y ~ u + x| year | 0 | (id+year), d))
 
 
 ## TWOWAY FIXED EFFECTS
 
-plm3=plm(y~x +u | u+e,
+plm3=plm(y~x +u,
          data=d,
          model="within", 
          effect="twoway", 
          index=c("id", "year"))
 
+# NO CORRECTION (no HC & no df correction)
+summary(plm3) 
+summary(felm(y ~ u + x| id+year | 0 | 0, d))
+
+# HC CORRECTION
+coeftest(plm3, vcov=(41/(41-14+1-2))*vcovHC(plm3, type="HC0", method = "white1"))
+coeftest(plm3, vcovHR(plm3))
+
 # GROUP CLUSTER
-coeftest(plm3, vcov=(40/(41-14+1-2))*(9/8)*vcovHC(plm3, type="HC0", cluster="group"))
-coeftest(plm3, vcov=vcovCL(x=plm3, cluster=d$id, stata=T))
-# cannot subtract intercept twice
-summary(felm(y ~ u | id+year | (x ~ e) | id, d))
+coeftest(plm3, vcov=vcovCL(x=plm3, cluster=d$id))
+summary(felm(y ~ u + x| id+year | 0 | id, d))
 
 # TIME CLUSTER
-coeftest(plm3, vcov=(40/(41-14+1-2))*(5/4)*vcovHC(plm3, type="HC0", cluster="time"))
-coeftest(plm3, vcov=vcovCL(x=plm3, cluster=d$year, stata=T))
-# cannot subtract intercept twice
-summary(felm(y ~ u | id+year | (x ~ e) | year, d))
+coeftest(plm3, vcov=vcovCL(x=plm3, cluster=d$year))
+summary(felm(y ~ u + x| id+year | 0 | year, d))
 
-# NO CLUSTER (no HC too)
-summary(plm3)
-summary(felm(y ~ u | id+year | (x ~ e) | 0, d))
-
-# HC COREECTION
-coeftest(plm3, vcov=(40/(41-14+1-2))*vcovG(plm3, type = "HC0", l = 0, inner = "white"))
-coeftest(plm3, vcov=(40/(41-14+1-2))*vcovHC(plm3, type="HC0", method = "white1"))
-
-# HIGHER-LEVEL CLUSTER
-coeftest(plm3, vcov=vcovCL(x=plm3, cluster=d$gid, stata=T))
-summary(felm(y ~ u | id+year | (x ~ e) | gid, d))
+# HIGHER-LEVEL CLUSTERING
+coeftest(plm3, vcov=vcovCL(x=plm3, cluster=d$gid))
+summary(felm(y ~ u + x| id+year | 0 | gid, d))
 
 # TWOWAY CLUSTERING
 coeftest(plm3, vcov=vcovDC(plm3, type="HC0"))
-coeftest(plm3, vcov=vcovTC(x=plm3, d$year, d$id, stata=F))
-coeftest(plm3, vcov=( (40/(41-14+1-2))*(9/8)*vcovCL(x=plm3, cluster=d$id)+
-                         (40/(41+1-14-2))*(5/4)* vcovCL(x=plm3, cluster=d$year)-
-                         (40/(41-14+1-2))*(41/40)*vcovHC(plm3, type="HC0", method = "white1") ) )
-coeftest(plm3, vcov=vcovTC(x=plm3, d$year, d$id, stata=T))
-summary(felm(y ~ u | id+year | (x ~ e) | (id+year), d))
-
-vcovCL(x=plm3, cluster=d$idyear)
-vcovHC(plm3, type="HC0", method = "white1")
+coeftest(plm3, vcov=vcovTC(x=plm3, d$year, d$id))
+summary(felm(y ~ u + x| id+year | 0 | (id+year), d))
