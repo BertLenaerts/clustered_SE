@@ -2,8 +2,9 @@
 clear all
 cls clears screen
 
-import delimited "d.csv", clear 
+import delimited "df.csv", clear 
 qui tab id, gen(k)
+
 
 //// GROUP-FIXED EFFECTS
 
@@ -27,11 +28,12 @@ reg y u x k*, vce(cluster year)
 // HIGHER-LEVEL CLUSTERING
 reg y u x k*, vce(cluster gid)
 xtreg y u x, fe cluster(gid) dfadj
+cgmreg y u x k*, cluster(gid) nocons
 
 
 //// TIME-FIXED EFFECTS
 
-xtset id year
+xtset year id
 
 // NO CORRECTION
 reg y u x i.year
